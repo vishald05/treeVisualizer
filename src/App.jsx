@@ -149,6 +149,7 @@ function App() {
   const [currentStepIndex, setCurrentStepIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1000);
+  const [executionMode, setExecutionMode] = useState('local'); // 'local' (transpile) or 'remote' (backend)
 
   // Load Pyodide on mount
   useEffect(() => {
@@ -176,6 +177,7 @@ function App() {
     setError(null);
     setTranslatedCode(null);
     setShowTranslated(false);
+    if (newLang === 'python') setExecutionMode('local');
   };
 
   // Get the correct Prism grammar for the current language
@@ -186,14 +188,40 @@ function App() {
   // ── Run Code ─────────────────────────────────────────────────────
 
   const runCode = async () => {
-    if (!pyodide) return;
+    if (!pyodide && executionMode === 'local') return;
     setError(null);
     setTreeData(null);
     setCurrentStepIndex(-1);
     setIsPlaying(false);
-    setTranslatedCode(null);
-    setShowTranslated(false);
 
+    // Mode: Remote (Real Java Backend)
+    if (language === 'java' && executionMode === 'remote') {
+      try {
+        setIsLoading(true);
+        const response = await fetch('http://localhost:5001/trace-java', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code })
+        });
+        const result = await response.json();
+        setIsLoading(false);
+        
+        if (result.error) {
+          setError(result.error);
+        } else if (result.tree) {
+          setTreeData(result);
+        } else {
+          setError('No recursion detected. Did you call the function in main()?');
+        }
+        return;
+      } catch (err) {
+        setIsLoading(false);
+        setError(`Backend error: ${err.message}. Make sure the server is running (npm run server)`);
+        return;
+      }
+    }
+
+    // Mode: Local (Transpilation-based)
     let pythonCode = code;
 
     // If Java, transpile to Python locally if not already done or if edited
@@ -278,8 +306,35 @@ function App() {
               ))}
             </select>
             {language === 'java' && (
+              <div className="engine-selector">
+                <label>Engine:</label>
+                <div className="segmented-control">
+                  <button 
+                    className={executionMode === 'local' ? 'active' : ''} 
+                    onClick={() => setExecutionMode('local')}
+                    title="Transpiles Java to Python locally in the browser"
+                  >
+                    Local (WASM)
+                  </button>
+                  <button 
+                    className={executionMode === 'remote' ? 'active' : ''} 
+                    onClick={() => setExecutionMode('remote')}
+                    title="Runs real Java on the server (requires JDK)"
+                  >
+                    Remote (JDK)
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {language === 'java' && executionMode === 'local' && (
               <span className="transpile-badge" title="Java code will be transpiled to Python locally">
                 ⚡ Local Transpile
+              </span>
+            )}
+            {language === 'java' && executionMode === 'remote' && (
+              <span className="remote-badge" title="Using real Java backend">
+                🌍 Backend Engine
               </span>
             )}
           </div>
