@@ -3,10 +3,20 @@ import EditorModule from 'react-simple-code-editor';
 const Editor = EditorModule.default || EditorModule;
 import Prism from 'prismjs';
 import 'prismjs/components/prism-python';
+import 'prismjs/components/prism-java';
 import 'prismjs/themes/prism-tomorrow.css';
 import './App.css';
+import { javaToPython } from './javaTranspiler';
 
-const DEFAULT_PYTHON_CODE = `def fib(n):
+// ── Language Configurations ──────────────────────────────────────────
+
+const LANGUAGES = [
+  { id: 'python', label: 'Python', prismGrammar: 'python' },
+  { id: 'java', label: 'Java', prismGrammar: 'java' },
+];
+
+const DEFAULT_SNIPPETS = {
+  python: `def fib(n):
     if n <= 1:
         return n
     left = fib(n - 1)
@@ -14,7 +24,23 @@ const DEFAULT_PYTHON_CODE = `def fib(n):
     return left + right
 
 # The last line should call the function
-fib(4)`;
+fib(4)`,
+
+  java: `public class Main {
+    static int fib(int n) {
+        if (n <= 1) return n;
+        int left = fib(n - 1);
+        int right = fib(n - 2);
+        return left + right;
+    }
+
+    public static void main(String[] args) {
+        fib(4);
+    }
+}`,
+};
+
+// ── Python Tracer (unchanged) ────────────────────────────────────────
 
 const PYTHON_TRACER_SCRIPT = `
 import sys
@@ -84,6 +110,8 @@ root_tree = root_nodes[0] if root_nodes else None
 json.dumps({ "steps": tracer.steps, "tree": root_tree })
 `;
 
+// ── Tree Node Component ──────────────────────────────────────────────
+
 function TreeNode({ node, activeNodeId, returnedNodes }) {
   if (!node) return null;
   const isActive = node.id === activeNodeId;
@@ -106,17 +134,23 @@ function TreeNode({ node, activeNodeId, returnedNodes }) {
   );
 }
 
+// ── App Component ────────────────────────────────────────────────────
+
 function App() {
-  const [code, setCode] = useState(DEFAULT_PYTHON_CODE);
+  const [language, setLanguage] = useState('python');
+  const [code, setCode] = useState(DEFAULT_SNIPPETS.python);
   const [pyodide, setPyodide] = useState(null);
   const [treeData, setTreeData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [errorError, setError] = useState(null);
+  const [error, setError] = useState(null);
+  const [translatedCode, setTranslatedCode] = useState(null);
+  const [showTranslated, setShowTranslated] = useState(false);
 
   const [currentStepIndex, setCurrentStepIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1000);
 
+  // Load Pyodide on mount
   useEffect(() => {
     async function loadPyodide() {
       try {
@@ -132,15 +166,52 @@ function App() {
     loadPyodide();
   }, []);
 
+  // Switch language → load default snippet
+  const handleLanguageChange = (newLang) => {
+    setLanguage(newLang);
+    setCode(DEFAULT_SNIPPETS[newLang]);
+    setTreeData(null);
+    setCurrentStepIndex(-1);
+    setIsPlaying(false);
+    setError(null);
+    setTranslatedCode(null);
+    setShowTranslated(false);
+  };
+
+  // Get the correct Prism grammar for the current language
+  const currentLangConfig = LANGUAGES.find(l => l.id === language);
+  const prismGrammar = Prism.languages[currentLangConfig?.prismGrammar || 'python'];
+  const prismLangName = currentLangConfig?.prismGrammar || 'python';
+
+  // ── Run Code ─────────────────────────────────────────────────────
+
   const runCode = async () => {
     if (!pyodide) return;
     setError(null);
     setTreeData(null);
     setCurrentStepIndex(-1);
     setIsPlaying(false);
+    setTranslatedCode(null);
+    setShowTranslated(false);
 
+    let pythonCode = code;
+
+    // If Java, transpile to Python locally
+    if (language === 'java') {
+      try {
+        pythonCode = javaToPython(code);
+        setTranslatedCode(pythonCode);
+        setShowTranslated(true);
+      } catch (err) {
+        console.error(err);
+        setError(`Transpilation failed: ${err.message || String(err)}`);
+        return;
+      }
+    }
+
+    // Run the Python code through Pyodide tracer
     try {
-      pyodide.globals.set('user_code', code);
+      pyodide.globals.set('user_code', pythonCode);
       const resultJson = await pyodide.runPythonAsync(PYTHON_TRACER_SCRIPT);
       const result = JSON.parse(resultJson);
       
@@ -154,6 +225,8 @@ function App() {
       setError(err.message ? err.message.toString() : String(err));
     }
   };
+
+  // ── Playback ──────────────────────────────────────────────────────
 
   const steps = treeData?.steps || [];
   
@@ -179,19 +252,39 @@ function App() {
     }
   }
 
+  // ── Render ────────────────────────────────────────────────────────
+
   return (
     <div className="app-container">
       <div className="sidebar">
-        <div style={{ padding: '10px', background: '#333', color: 'white' }}>
-          <h3>Python Visualizer (Pyodide)</h3>
-          {isLoading && <p>Loading Python engine...</p>}
+        <div className="sidebar-header">
+          <h3>Recursion Tree Visualizer</h3>
+          {isLoading && <p className="loading-text">Loading Python engine...</p>}
+          
+          <div className="language-selector">
+            <label htmlFor="lang-select">Language:</label>
+            <select
+              id="lang-select"
+              value={language}
+              onChange={e => handleLanguageChange(e.target.value)}
+            >
+              {LANGUAGES.map(lang => (
+                <option key={lang.id} value={lang.id}>{lang.label}</option>
+              ))}
+            </select>
+            {language === 'java' && (
+              <span className="transpile-badge" title="Java code will be transpiled to Python locally">
+                ⚡ Local Transpile
+              </span>
+            )}
+          </div>
         </div>
         
         <div className="editor-container" style={{ background: '#2d2d2d' }}>
           <Editor
             value={code}
             onValueChange={setCode}
-            highlight={c => Prism.highlight(c, Prism.languages.python, 'python')}
+            highlight={c => Prism.highlight(c, prismGrammar, prismLangName)}
             padding={15}
             style={{
               fontFamily: 'monospace',
@@ -201,10 +294,27 @@ function App() {
             }}
           />
         </div>
+
+        {/* Translated Python preview (for Java) */}
+        {translatedCode && (
+          <div className="translated-panel">
+            <button
+              className="translated-toggle"
+              onClick={() => setShowTranslated(!showTranslated)}
+            >
+              {showTranslated ? '▾' : '▸'} Transpiled Python
+            </button>
+            {showTranslated && (
+              <pre className="translated-code">{translatedCode}</pre>
+            )}
+          </div>
+        )}
         
-        <div style={{ padding: '10px', background: '#fff' }}>
-          <button className="primary" onClick={runCode} disabled={isLoading}>Generate Recursion Tree</button>
-          {errorError && <div style={{ color: 'red', marginTop: '10px', whiteSpace: 'pre-wrap', fontSize: '12px' }}>{errorError}</div>}
+        <div className="sidebar-footer">
+          <button className="primary" onClick={runCode} disabled={isLoading}>
+            Generate Recursion Tree
+          </button>
+          {error && <div className="error-message">{error}</div>}
         </div>
       </div>
 

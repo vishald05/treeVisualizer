@@ -31,6 +31,69 @@ body {
   overflow: hidden;
 }
 
+/* ── Sidebar Header ─────────────────────────────────────────── */
+
+.sidebar-header {
+  padding: 10px;
+  background: #333;
+  color: white;
+}
+
+.sidebar-header h3 {
+  margin: 0 0 6px 0;
+}
+
+.sidebar-header .loading-text {
+  margin: 4px 0;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+/* ── Language Selector ───────────────────────────────────────── */
+
+.language-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.language-selector label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ccc;
+}
+
+.language-selector select {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #555;
+  background: #444;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+}
+
+.language-selector select:hover {
+  border-color: #888;
+}
+
+.transpile-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.5px;
+}
+
+/* ── Editor ──────────────────────────────────────────────────── */
+
 .editor-container {
   flex: 1;
   overflow: auto;
@@ -39,6 +102,97 @@ body {
   padding: 10px;
   font-size: 14px;
 }
+
+/* ── Translated Code Preview ─────────────────────────────────── */
+
+.translated-panel {
+  border-top: 1px solid #444;
+  background: #1e1e1e;
+}
+
+.translated-toggle {
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: #2a2a2a;
+  color: #a8d8a8;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.translated-toggle:hover {
+  background: #333;
+}
+
+.translated-code {
+  margin: 0;
+  padding: 10px 14px;
+  background: #1a1a2e;
+  color: #c4e0c4;
+  font-family: monospace;
+  font-size: 12px;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-top: 1px solid #333;
+}
+
+/* ── Sidebar Footer ──────────────────────────────────────────── */
+
+.sidebar-footer {
+  padding: 10px;
+  background: #fff;
+}
+
+/* ── Translating Indicator ───────────────────────────────────── */
+
+.translating-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #eef2ff, #f5f0ff);
+  border: 1px solid #c7d2fe;
+  border-radius: 6px;
+  color: #4338ca;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #c7d2fe;
+  border-top-color: #4338ca;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Error Message ───────────────────────────────────────────── */
+
+.error-message {
+  color: #dc2626;
+  margin-top: 10px;
+  white-space: pre-wrap;
+  font-size: 12px;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+}
+
+/* ── Controls ────────────────────────────────────────────────── */
 
 .controls {
   padding: 1rem;
@@ -86,6 +240,8 @@ button:disabled {
   border-radius: 4px;
   border: 1px solid #ddd;
 }
+
+/* ── Tree View ───────────────────────────────────────────────── */
 
 .tree-view {
   overflow: auto;
@@ -190,4 +346,3 @@ button:disabled {
   color: #155724;
   font-weight: bold;
 }
-
