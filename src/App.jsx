@@ -196,12 +196,17 @@ function App() {
 
     let pythonCode = code;
 
-    // If Java, transpile to Python locally
+    // If Java, transpile to Python locally if not already done or if edited
     if (language === 'java') {
       try {
-        pythonCode = javaToPython(code);
-        setTranslatedCode(pythonCode);
-        setShowTranslated(true);
+        // Use edited code if available, otherwise transpile
+        if (!translatedCode) {
+          pythonCode = javaToPython(code);
+          setTranslatedCode(pythonCode);
+          setShowTranslated(true);
+        } else {
+          pythonCode = translatedCode;
+        }
       } catch (err) {
         console.error(err);
         setError(`Transpilation failed: ${err.message || String(err)}`);
@@ -296,16 +301,50 @@ function App() {
         </div>
 
         {/* Translated Python preview (for Java) */}
-        {translatedCode && (
+        {language === 'java' && (
           <div className="translated-panel">
-            <button
-              className="translated-toggle"
-              onClick={() => setShowTranslated(!showTranslated)}
-            >
-              {showTranslated ? '▾' : '▸'} Transpiled Python
-            </button>
+            <div className="translated-header">
+              <button
+                className="translated-toggle"
+                onClick={() => setShowTranslated(!showTranslated)}
+              >
+                {showTranslated ? '▾' : '▸'} Transpiled Python (Editable)
+              </button>
+              <button 
+                className="retranspile-btn"
+                onClick={() => {
+                  try {
+                    const py = javaToPython(code);
+                    setTranslatedCode(py);
+                    setShowTranslated(true);
+                  } catch (err) {
+                    setError(`Transpilation failed: ${err.message}`);
+                  }
+                }}
+              >
+                🔄 Re-transpile
+              </button>
+            </div>
             {showTranslated && (
-              <pre className="translated-code">{translatedCode}</pre>
+              <div className="translated-editor-wrapper">
+                <Editor
+                  value={translatedCode || ''}
+                  onValueChange={setTranslatedCode}
+                  highlight={c => Prism.highlight(c, Prism.languages.python, 'python')}
+                  padding={10}
+                  className="translated-editor"
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    outline: 'none',
+                    background: '#1a1a2e',
+                    color: '#c4e0c4',
+                    minHeight: '100px',
+                    maxHeight: '300px',
+                    overflow: 'auto'
+                  }}
+                />
+              </div>
             )}
           </div>
         )}

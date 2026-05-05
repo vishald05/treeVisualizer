@@ -32,10 +32,51 @@ export function javaToPython(javaCode) {
   code = removeMainMethod(code);
 
   // ── Step 4: Convert methods to Python functions ──────────────────
-  const pythonBody = convertBody(code);
+  // First pass: collect member variables
+  const memberVars = collectMemberVars(code);
+  const pythonBody = convertBody(code, memberVars);
 
   // ── Step 5: Append the entry-point call ──────────────────────────
-  return (pythonBody.trim() + '\n\n' + mainCall.trim()).trim();
+  let result = (pythonBody.trim() + '\n\n' + mainCall.trim()).trim();
+
+  // Prepend member variable initializations at the top level
+  if (memberVars.length > 0) {
+    const inits = memberVars.map(v => `${v.name} = ${v.value}`).join('\n');
+    result = inits + '\n\n' + result;
+  }
+
+  return result;
+}
+
+/** Collect variables defined outside methods. */
+function collectMemberVars(code) {
+  const lines = code.split('\n');
+  const vars = [];
+  let inMethod = 0;
+
+  for (let line of lines) {
+    const cleanLine = line.trim();
+    if (!cleanLine) continue;
+
+    const openBraces = (cleanLine.match(/\{/g) || []).length;
+    const closeBraces = (cleanLine.match(/\}/g) || []).length;
+
+    // A variable is a member if it's at level 0 (outside any method)
+    if (inMethod === 0) {
+       // Match: [static] [final] Type name [= value];
+       const varDecl = cleanLine.match(/^(?:static\s+)?(?:final\s+)?(?:int|long|double|float|boolean|String|char|short|byte|var|Object|Long|Integer|Double|Float|Boolean|Character|\w+(?:<[^>]+>)?(?:\[\])*)\s+(\w+)\s*(?:=\s*(.+))?;?$/);
+       if (varDecl && !cleanLine.includes('(')) {
+         vars.push({
+           name: varDecl[1],
+           value: varDecl[2] ? convertExpression(varDecl[2]) : 'None'
+         });
+       }
+    }
+
+    inMethod += openBraces;
+    inMethod -= closeBraces;
+  }
+  return vars;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -132,10 +173,11 @@ function extractBracedBlock(code, startIdx) {
 // Body Converter — handles brace-to-indentation conversion
 // ═══════════════════════════════════════════════════════════════════
 
-function convertBody(code) {
+function convertBody(code, memberVars = []) {
   const lines = code.split('\n');
   const result = [];
   let indentLevel = 0;
+  let javaDepth = 0;
 
   // Track whether next line should have extra indent (braceless if/else)
   let pendingIndent = false;
@@ -144,37 +186,39 @@ function convertBody(code) {
     let line = lines[i].trim();
     if (!line) continue;
 
-    // ── Handle closing braces ────────────────────────────────────
-    // Count leading closing braces
-    while (line.startsWith('}')) {
-      indentLevel = Math.max(0, indentLevel - 1);
-      line = line.substring(1).trim();
-      if (!line) break;
-    }
-    if (!line) continue;
+    // Detect braces before processing line
+    const openBraces = (line.match(/\{/g) || []).length;
+    const closeBraces = (line.match(/\}/g) || []).length;
 
-    // ── Skip standalone opening braces ───────────────────────────
-    if (line === '{') {
-      indentLevel++;
-      continue;
+    // ── Handle closing braces at start of line (e.g. "} else {") ──────
+    if (line.startsWith('}')) {
+      indentLevel = Math.max(0, indentLevel - 1);
+      javaDepth = Math.max(0, javaDepth - 1);
+      
+      // If the line is just "}", we skip processing but keep the new javaDepth
+      if (line === '}') {
+        continue;
+      }
     }
 
     // ── Method signature ─────────────────────────────────────────
     const methodMatch = line.match(
       /^(?:public\s+)?(?:private\s+)?(?:protected\s+)?(?:static\s+)?(?:final\s+)?(?:synchronized\s+)?(?:int|long|double|float|boolean|void|String|char|short|byte|Object|\w+(?:<[^>]+>)?(?:\[\])*)\s+(\w+)\s*\(([^)]*)\)\s*\{?\s*$/
     );
+    
     if (methodMatch && !line.includes('=') && !line.includes('new ')) {
       const funcName = methodMatch[1];
-      const rawParams = methodMatch[2];
-      const params = parseParams(rawParams);
-      const pyLine = `def ${funcName}(${params}):`;
-      result.push(indent(indentLevel) + pyLine);
+      const params = parseParams(methodMatch[2]);
+      result.push(indent(indentLevel) + `def ${funcName}(${params}):`);
 
-      if (line.endsWith('{')) {
-        indentLevel++;
-      } else {
-        indentLevel++;
-      }
+      indentLevel++;
+      javaDepth++;
+      
+      // Inject global declarations for member variables
+      memberVars.forEach(v => {
+        result.push(indent(indentLevel) + `global ${v.name}`);
+      });
+
       continue;
     }
 
@@ -182,29 +226,33 @@ function convertBody(code) {
     const endsWithBrace = line.endsWith('{');
     const cleanLine = endsWithBrace ? line.slice(0, -1).trim() : line;
 
-    // Handle if / else if / else
+    // Skip member variables (they were moved to top level in javaToPython)
+    if (javaDepth === 0 && !methodMatch && !line.includes('(')) {
+      const isVar = cleanLine.match(/^(?:static\s+)?(?:final\s+)?(?:int|long|double|float|boolean|String|char|short|byte|var|Object|Long|Integer|Double|Float|Boolean|Character|\w+(?:<[^>]+>)?(?:\[\])*)\s+(\w+)\s*(?:=\s*(.+))?;?$/);
+      if (isVar) {
+        if (endsWithBrace) javaDepth++;
+        continue;
+      }
+    }
+
+    // Convert and push
     const converted = convertLine(cleanLine);
     if (converted !== null && converted.trim()) {
       const actualIndent = pendingIndent ? indentLevel + 1 : indentLevel;
-      // Handle multi-line results (e.g. single-line if with body)
-      // Each line needs the correct base indentation
       const convertedLines = converted.split('\n');
       const indented = convertedLines.map(cl => indent(actualIndent) + cl).join('\n');
       result.push(indented);
       pendingIndent = false;
     }
 
-    if (endsWithBrace) {
+    if (endsWithBrace && !methodMatch) {
       indentLevel++;
+      javaDepth++;
     }
 
-    // Detect braceless if/else (line ends with : but no brace opened)
-    // and next line isn't a brace
-    if (!endsWithBrace && converted && (converted.endsWith(':')) && i + 1 < lines.length) {
-      const nextTrimmed = lines[i + 1]?.trim();
-      if (nextTrimmed && nextTrimmed !== '{') {
-        pendingIndent = true;
-      }
+    // Track braceless indentation
+    if (!endsWithBrace && converted && converted.endsWith(':') && i + 1 < lines.length) {
+      if (lines[i+1].trim() !== '{') pendingIndent = true;
     }
   }
 
@@ -283,7 +331,15 @@ function convertLine(line) {
   // ── return statement ───────────────────────────────────────────
   const returnMatch = line.match(/^return\s+(.*)$/);
   if (returnMatch) {
-    return `return ${convertExpression(returnMatch[1])}`;
+    let expr = returnMatch[1].trim();
+    // Handle assignment in return: return dp[ind] = res;
+    const assignInReturn = expr.match(/^([^=]+)\s*=\s*([^=]+)$/);
+    if (assignInReturn && (assignInReturn[1].includes('[') || !assignInReturn[1].includes(' '))) {
+      const target = assignInReturn[1].trim();
+      const val = convertExpression(assignInReturn[2]);
+      return `${target} = ${val}\nreturn ${target}`;
+    }
+    return `return ${convertExpression(expr)}`;
   }
   if (line === 'return') return 'return';
 
@@ -390,8 +446,9 @@ function convertExpression(expr) {
   // Actually, .length for arrays → len()
   e = e.replace(/(\w+)\.__len__\(\)/g, 'len($1)');
 
-  // Array creation: new int[n] → [0] * n
+  // Array creation: new int[n] → [0] * n, new Object[n] -> [None] * n
   e = e.replace(/new\s+(?:int|long|double|float|char|boolean|short|byte)\[([^\]]+)\]/g, '[0] * $1');
+  e = e.replace(/new\s+(?:\w+)(?:\s*<[^>]+>)?\[([^\]]+)\]/g, '[None] * $1');
 
   // new String[n] → [None] * n or [""] * n
   e = e.replace(/new\s+String\[([^\]]+)\]/g, '[""] * $1');
@@ -403,13 +460,20 @@ function convertExpression(expr) {
   e = e.replace(/String\.valueOf\(/g, 'str(');
 
   // .charAt(i) → [i]
-  e = e.replace(/\.charAt\((\w+)\)/g, '[$1]');
+  e = e.replace(/\.charAt\(([^)]+)\)/g, '[$1]');
 
   // .substring(a, b) → [a:b]
   e = e.replace(/\.substring\(([^,]+),\s*([^)]+)\)/g, '[$1:$2]');
 
   // .equals("...") → == "..."
   e = e.replace(/\.equals\(([^)]+)\)/g, ' == $1');
+
+  // Casting: (int) x -> int(x)
+  // Handle (int)rec(0, s) or (int)(a+b)
+  const types = 'int|long|double|float|short|byte|char|Integer|Long|Double|Float|Boolean|String';
+  e = e.replace(new RegExp(`\\((${types})\\)\\s*(\\([^)]+\\))`, 'g'), 'int($2)');
+  e = e.replace(new RegExp(`\\((${types})\\)\\s*(\\w+\\([^)]+\\))`, 'g'), 'int($2)');
+  e = e.replace(new RegExp(`\\((${types})\\)\\s*([^+\\-*/=<>!&|% ]+)`, 'g'), 'int($2)');
 
   // Ternary: cond ? a : b → a if cond else b
   const ternaryMatch = e.match(/^(.+?)\s*\?\s*(.+?)\s*:\s*(.+)$/);
