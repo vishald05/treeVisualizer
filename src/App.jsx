@@ -113,7 +113,7 @@ json.dumps({ "steps": tracer.steps, "tree": root_tree })
 
 // ── Tree Node Component ──────────────────────────────────────────────
 
-function TreeNode({ node, activeNodeId, returnedNodes, selectedArgs }) {
+function TreeNode({ node, activeNodeId, returnedNodes, selectedArgs, nodeShape }) {
   if (!node) return null;
   const isActive = node.id === activeNodeId;
   const isReturned = returnedNodes.has(node.id);
@@ -131,14 +131,14 @@ function TreeNode({ node, activeNodeId, returnedNodes, selectedArgs }) {
   
   return (
     <li>
-      <div className={`tree-node ${isActive ? 'active' : ''} ${isReturned ? 'returned' : ''}`}>
+      <div className={`tree-node shape-${nodeShape} ${isActive ? 'active' : ''} ${isReturned ? 'returned' : ''}`}>
         <div className="node-label">{label}</div>
         {isReturned && <div className="node-value">Result: {String(node.value)}</div>}
       </div>
       {node.children && node.children.length > 0 && (
         <ul>
           {node.children.map(child => (
-            <TreeNode key={child.id} node={child} activeNodeId={activeNodeId} returnedNodes={returnedNodes} selectedArgs={selectedArgs} />
+            <TreeNode key={child.id} node={child} activeNodeId={activeNodeId} returnedNodes={returnedNodes} selectedArgs={selectedArgs} nodeShape={nodeShape} />
           ))}
         </ul>
       )}
@@ -165,6 +165,9 @@ function App() {
   const [availableArgs, setAvailableArgs] = useState([]);
   const [selectedArgs, setSelectedArgs] = useState(new Set());
   const [isCodeEditorVisible, setIsCodeEditorVisible] = useState(true);
+  const [scale, setScale] = useState(1);
+  const [darkMode, setDarkMode] = useState(false);
+  const [nodeShape, setNodeShape] = useState('rectangle');
 
   // Load Pyodide on mount
   useEffect(() => {
@@ -313,9 +316,15 @@ function App() {
   // ── Render ────────────────────────────────────────────────────────
 
   return (
-    <div className={`app-container ${isCodeEditorVisible ? '' : 'sidebar-hidden'}`}>
+    <div className={`app-container ${isCodeEditorVisible ? '' : 'sidebar-hidden'} ${darkMode ? 'dark-mode' : ''}`}>
       <div className={`sidebar ${isCodeEditorVisible ? 'visible' : 'hidden'}`}>
         <div className="sidebar-header">
+          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+            <h3>Recursion Tree Visualizer</h3>
+            <button className="theme-toggle" onClick={() => setDarkMode(!darkMode)} title="Toggle Dark Mode">
+              {darkMode ? '☀️ Light' : '🌙 Dark'}
+            </button>
+          </div>
           <h3>Recursion Tree Visualizer</h3>
           {isLoading && <p className="loading-text">Loading Python engine...</p>}
           
@@ -459,6 +468,14 @@ function App() {
                 <option value={200}>Fast</option>
               </select>
             </label>
+
+            <label style={{marginLeft: '10px'}}>
+              Shape: 
+              <select value={nodeShape} onChange={e => setNodeShape(e.target.value)}>
+                <option value="rectangle">Rectangle</option>
+                <option value="circle">Circle</option>
+              </select>
+            </label>
           </div>
 
           <div className="step-info" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -490,11 +507,22 @@ function App() {
           </div>
         </header>
 
-        <main className="tree-view">
+        <main className="tree-view" onWheel={(e) => {
+          if (e.ctrlKey) {
+            e.preventDefault();
+            setScale(s => Math.min(Math.max(0.1, s - e.deltaY * 0.005), 3));
+          }
+        }}>
+          <div className="zoom-controls">
+            <button onClick={() => setScale(s => Math.min(3, s + 0.1))}>Zoom In</button>
+            <button onClick={() => setScale(s => Math.max(0.1, s - 0.1))}>Zoom Out</button>
+            <button onClick={() => setScale(1)}>Reset Zoom</button>
+            <span style={{fontSize: '12px', marginLeft: '5px'}}>{Math.round(scale * 100)}%</span>
+          </div>
           {treeData ? (
-            <div className="tree-container">
+            <div className="tree-container" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}>
               <ul className="tree">
-                <TreeNode node={treeData.tree} activeNodeId={activeNodeId} returnedNodes={returnedNodes} selectedArgs={selectedArgs} />
+                <TreeNode node={treeData.tree} activeNodeId={activeNodeId} returnedNodes={returnedNodes} selectedArgs={selectedArgs} nodeShape={nodeShape} />
               </ul>
             </div>
           ) : (

@@ -328,6 +328,7 @@ button:disabled {
 /* ── Tree View ───────────────────────────────────────────────── */
 
 .tree-view {
+  position: relative;
   overflow: auto;
   flex: 1;
   display: flex;
@@ -436,3 +437,28 @@ button:disabled {
 .divider { width: 1px; height: 24px; background: #ccc; margin: 0 8px; }
 
 .args-selector { background: #f8f9fa; padding: 6px 12px; border-radius: 6px; border: 1px solid #ddd; display: flex; align-items: center; }
+
+
+/* Theme & Zoom Controls */
+.theme-toggle { background: transparent; border: 1px solid #ccc; color: inherit; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+.zoom-controls { position: absolute; bottom: 20px; right: 20px; display: flex; gap: 5px; align-items: center; background: rgba(255,255,255,0.8); padding: 5px 10px; border-radius: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 100; }
+
+/* Dark Mode Variables */
+.app-container.dark-mode { --bg-primary: #121212; --bg-secondary: #1e1e1e; --text-primary: #ffffff; --border-color: #333; --panel-bg: #252526; color: var(--text-primary); }
+.app-container.dark-mode .sidebar { background: var(--bg-secondary); border-color: var(--border-color); }
+.app-container.dark-mode .sidebar-footer { background: var(--bg-secondary); border-top: 1px solid var(--border-color); }
+.app-container.dark-mode .main-content { background: var(--bg-primary); }
+.app-container.dark-mode .controls { border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); }
+.app-container.dark-mode .tree-node { background: var(--panel-bg); color: var(--text-primary); border-color: #444; }
+.app-container.dark-mode .tree-node.active { background: #004a77; border-color: #007bff; }
+.app-container.dark-mode .tree-node.returned { border-color: #28a745; background: #0b3d1b; }
+.app-container.dark-mode .zoom-controls { background: rgba(30,30,30,0.8); color: white; }
+
+.app-container.dark-mode .step-info { background: var(--bg-secondary); border-color: var(--border-color); color: var(--text-primary); }
+.app-container.dark-mode .args-selector { background: var(--bg-secondary); border-color: var(--border-color); }
+
+.tree-node.shape-circle { border-radius: 50%; min-width: 90px; min-height: 90px; width: max-content; aspect-ratio: 1; display: flex !important; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 15px; box-sizing: border-box; white-space: pre-wrap; word-break: break-word; margin: 0 auto; }
+.tree-node.shape-circle .node-value { margin-top: 0; font-size: 11px; }
+
+@keyframes borderFlow { 0% { border-color: #ccc; } 50% { border-color: #007bff; } 100% { border-color: #ccc; } }
+.tree li::before, .tree li::after, .tree ul::before { animation: borderFlow 2s infinite; }
