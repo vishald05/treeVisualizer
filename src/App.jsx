@@ -168,7 +168,7 @@ function App() {
   const [selectedArgs, setSelectedArgs] = useState(new Set());
   const [isCodeEditorVisible, setIsCodeEditorVisible] = useState(true);
   const [scale, setScale] = useState(1);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
   const [nodeShape, setNodeShape] = useState('rectangle');
   const [isRecording, setIsRecording] = useState(false);
 
