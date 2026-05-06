@@ -462,3 +462,6 @@ button:disabled {
 
 @keyframes borderFlow { 0% { border-color: #ccc; } 50% { border-color: #007bff; } 100% { border-color: #ccc; } }
 .tree li::before, .tree li::after, .tree ul::before { animation: borderFlow 2s infinite; }
+
+.tree-view.preview-mode { border: 4px dashed #ff4757; box-shadow: inset 0 0 20px rgba(255, 71, 87, 0.4); }
+.app-container.dark-mode .tree-view.preview-mode { border: 4px dashed #ff4757; box-shadow: inset 0 0 20px rgba(255, 71, 87, 0.6); }

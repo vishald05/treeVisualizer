@@ -7,6 +7,8 @@ import 'prismjs/components/prism-java';
 import 'prismjs/themes/prism-tomorrow.css';
 import './App.css';
 import { javaToPython } from './javaTranspiler';
+import * as htmlToImage from 'html-to-image';
+import GIF from 'gif.js';
 
 // ── Language Configurations ──────────────────────────────────────────
 
@@ -168,6 +170,7 @@ function App() {
   const [scale, setScale] = useState(1);
   const [darkMode, setDarkMode] = useState(false);
   const [nodeShape, setNodeShape] = useState('rectangle');
+  const [isRecording, setIsRecording] = useState(false);
 
   // Load Pyodide on mount
   useEffect(() => {
@@ -220,6 +223,61 @@ function App() {
     } else {
       setError('No recursion detected. Did you call the function in main()?');
     }
+  };
+
+  const downloadGIF = async () => {
+    if (!treeData || !treeData.steps || treeData.steps.length === 0) return;
+    
+    setIsRecording(true);
+    setIsPlaying(false);
+    
+    const originalStep = currentStepIndex;
+    const treeElement = document.querySelector('.tree-view');
+    
+    const gif = new GIF({
+      workers: 2,
+      quality: 10,
+      workerScript: '/gif.worker.js',
+      width: treeElement.scrollWidth,
+      height: treeElement.scrollHeight,
+      background: darkMode ? '#121212' : '#ffffff'
+    });
+
+    // Reset zoom temporarily
+    const originalScale = scale;
+    setScale(1);
+
+    for (let i = 0; i < treeData.steps.length; i++) {
+      setCurrentStepIndex(i);
+      
+      // Wait for React render + CSS animation to settle
+      await new Promise(r => setTimeout(r, 200)); 
+      
+      const canvas = await htmlToImage.toCanvas(treeElement, {
+        backgroundColor: darkMode ? '#121212' : '#ffffff',
+        width: treeElement.scrollWidth,
+        height: treeElement.scrollHeight,
+      });
+      
+      gif.addFrame(canvas, { delay: speed });
+    }
+    
+    gif.on('finished', function(blob) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'recursion-tree.gif';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      setIsRecording(false);
+      setCurrentStepIndex(originalStep);
+      setScale(originalScale);
+    });
+    
+    gif.render();
   };
 
   const runCode = async () => {
@@ -459,6 +517,9 @@ function App() {
             </button>
             <button onClick={() => setCurrentStepIndex(c => Math.min(steps.length - 1, c + 1))} disabled={currentStepIndex >= steps.length - 1 || isPlaying || !treeData}>Next</button>
             <button onClick={() => { setIsPlaying(false); setCurrentStepIndex(-1); }} disabled={!treeData}>Reset</button>
+            <button onClick={downloadGIF} disabled={!treeData || isRecording} style={{ marginLeft: '10px', background: isRecording ? '#dc3545' : '#28a745', color: 'white', border: 'none' }} title="Download animation as GIF">
+              {isRecording ? '📸 Recording...' : '💾 GIF'}
+            </button>
 
             <label style={{marginLeft: '10px'}}>
               Speed: 
