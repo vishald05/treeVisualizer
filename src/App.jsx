@@ -383,7 +383,7 @@ function App() {
               {darkMode ? '☀️ Light' : '🌙 Dark'}
             </button>
           </div>
-          <h3>Recursion Tree Visualizer</h3>
+          
           {isLoading && <p className="loading-text">Loading Python engine...</p>}
           
           <div className="language-selector">
