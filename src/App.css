@@ -430,3 +430,9 @@ button:disabled {
   color: #155724;
   font-weight: bold;
 }
+
+.sidebar.hidden { display: none; }
+
+.divider { width: 1px; height: 24px; background: #ccc; margin: 0 8px; }
+
+.args-selector { background: #f8f9fa; padding: 6px 12px; border-radius: 6px; border: 1px solid #ddd; display: flex; align-items: center; }

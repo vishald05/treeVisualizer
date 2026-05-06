@@ -29,31 +29,31 @@ public class Tracer {
 
     public static class Node {
         int id;
-        String label;
+        String funcName;
+        Map<String, Object> args;
         Object value;
         List<Node> children = new ArrayList<>();
-        Node(int id, String l) { this.id = id; this.label = l; }
+        Node(int id, String funcName, Map<String, Object> args) { this.id = id; this.funcName = funcName; this.args = args; }
     }
 
-    public static int enter(String name, Object... args) {
+    public static int enter(String name, String[] argNames, Object[] argValues) {
         int id = idCounter++;
         Integer parentId = stack.isEmpty() ? null : stack.peek();
         
-        StringBuilder label = new StringBuilder(name + "(");
-        for(int i=0; i<args.length; i++) {
-            label.append(args[i] == null ? "null" : args[i].toString());
-            if(i < args.length-1) label.append(",");
+        Map<String, Object> argsMap = new LinkedHashMap<>();
+        for(int i=0; i<argNames.length; i++) {
+            argsMap.put(argNames[i], argValues[i] == null ? "null" : argValues[i].toString());
         }
-        label.append(")");
         
         Map<String, Object> step = new HashMap<>();
         step.put("type", "CALL");
         step.put("nodeId", id);
-        step.put("label", "Calling " + label);
+        step.put("funcName", name);
+        step.put("args", argsMap);
         step.put("parentId", parentId);
         steps.add(step);
 
-        Node node = new Node(id, label.toString());
+        Node node = new Node(id, name, argsMap);
         nodes.put(id, node);
         if(parentId != null) nodes.get(parentId).children.add(node);
         
@@ -69,7 +69,7 @@ public class Tracer {
         Map<String, Object> step = new HashMap<>();
         step.put("type", "RETURN");
         step.put("nodeId", id);
-        step.put("label", (node != null ? node.label : "func") + " returned " + value);
+        step.put("label", (node != null ? node.funcName : "func") + " returned " + value);
         step.put("value", value);
         steps.add(step);
 
@@ -122,7 +122,7 @@ public class Tracer {
         }
         if (obj instanceof Node) {
             Node n = (Node) obj;
-            return "{\\\"id\\\":" + n.id + ",\\\"label\\\":\\\"" + n.label + "\\\",\\\"value\\\":" + mapToJson(n.value) + ",\\\"children\\\":" + mapToJson(n.children) + "}";
+            return "{\\\"id\\\":" + n.id + ",\\\"funcName\\\":\\\"" + n.funcName + "\\\",\\\"args\\\":" + mapToJson(n.args) + ",\\\"value\\\":" + mapToJson(n.value) + ",\\\"children\\\":" + mapToJson(n.children) + "}";
         }
         return "\\\"" + obj.toString() + "\\\"";
     }
@@ -166,8 +166,9 @@ function instrumentJava(source) {
             
             // Smart split for parameters to handle generics like HashMap<String, Integer>
             const paramDecls = splitParameters(rawParams);
-            const params = paramDecls.map(p => p.split(/\s+/).pop().replace(/\[\]/g, ''));
-            const args = params.length > 0 ? ', ' + params.join(', ') : '';
+            const params = paramDecls.filter(p => !p.trim().startsWith('//')).map(p => p.split(/\s+/).pop().replace(/\[\]/g, ''));
+            const argNamesStr = params.length > 0 ? `new String[]{${params.map(p => `"${p}"`).join(', ')}}` : `new String[]{}`;
+            const argValuesStr = params.length > 0 ? `new Object[]{${params.join(', ')}}` : `new Object[]{}`;
             
             resultLines.push(line);
             if (!trimmed.endsWith('{')) {
@@ -176,7 +177,7 @@ function instrumentJava(source) {
             }
             
             currentMethodIdVar = `_tid_${Math.floor(Math.random()*10000)}`;
-            resultLines.push(`        int ${currentMethodIdVar} = Tracer.enter("${name}"${args});`);
+            resultLines.push(`        int ${currentMethodIdVar} = Tracer.enter("${name}", ${argNamesStr}, ${argValuesStr});`);
             continue;
         }
 

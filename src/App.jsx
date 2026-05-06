@@ -65,10 +65,10 @@ class Tracer:
             node_id = self.node_id_counter
             self.node_id_counter += 1
             
-            args_str = ','.join(str(frame.f_locals.get(var)) for var in frame.f_code.co_varnames[:frame.f_code.co_argcount])
-            label = f"{func_name}({args_str})"
+            arg_names = frame.f_code.co_varnames[:frame.f_code.co_argcount]
+            args_dict = { var: str(frame.f_locals.get(var)) for var in arg_names }
             
-            node = { "id": node_id, "label": label, "children": [], "value": None }
+            node = { "id": node_id, "funcName": func_name, "args": args_dict, "children": [], "value": None }
             self.tree_nodes[node_id] = node
             
             parent_id = self.stack[-1][0] if self.stack else None
@@ -78,20 +78,21 @@ class Tracer:
             self.steps.append({
                 "type": "CALL", 
                 "nodeId": node_id, 
-                "label": f"Calling {label}", 
+                "funcName": func_name,
+                "args": args_dict,
                 "parentId": parent_id
             })
             
-            self.stack.append((node_id, label))
+            self.stack.append((node_id, func_name))
             
         elif event == 'return':
             if self.stack:
-                node_id, label = self.stack.pop()
+                node_id, func_name = self.stack.pop()
                 self.tree_nodes[node_id]["value"] = arg
                 self.steps.append({
                     "type": "RETURN", 
                     "nodeId": node_id, 
-                    "label": f"{label} returned {arg}", 
+                    "label": f"{func_name} returned {arg}", 
                     "value": arg
                 })
         return self.trace_calls
@@ -112,21 +113,32 @@ json.dumps({ "steps": tracer.steps, "tree": root_tree })
 
 // ── Tree Node Component ──────────────────────────────────────────────
 
-function TreeNode({ node, activeNodeId, returnedNodes }) {
+function TreeNode({ node, activeNodeId, returnedNodes, selectedArgs }) {
   if (!node) return null;
   const isActive = node.id === activeNodeId;
   const isReturned = returnedNodes.has(node.id);
   
+  // Format the label dynamically based on selected args
+  let argsArray = [];
+  if (node.args) {
+    for (const [k, v] of Object.entries(node.args)) {
+      if (!selectedArgs || selectedArgs.has(k)) {
+        argsArray.push(v);
+      }
+    }
+  }
+  const label = `${node.funcName}(${argsArray.join(',')})`;
+  
   return (
     <li>
       <div className={`tree-node ${isActive ? 'active' : ''} ${isReturned ? 'returned' : ''}`}>
-        <div className="node-label">{node.label}</div>
+        <div className="node-label">{label}</div>
         {isReturned && <div className="node-value">Result: {String(node.value)}</div>}
       </div>
       {node.children && node.children.length > 0 && (
         <ul>
           {node.children.map(child => (
-            <TreeNode key={child.id} node={child} activeNodeId={activeNodeId} returnedNodes={returnedNodes} />
+            <TreeNode key={child.id} node={child} activeNodeId={activeNodeId} returnedNodes={returnedNodes} selectedArgs={selectedArgs} />
           ))}
         </ul>
       )}
@@ -150,6 +162,9 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1000);
   const [executionMode, setExecutionMode] = useState('local'); // 'local' (transpile) or 'remote' (backend)
+  const [availableArgs, setAvailableArgs] = useState([]);
+  const [selectedArgs, setSelectedArgs] = useState(new Set());
+  const [isCodeEditorVisible, setIsCodeEditorVisible] = useState(true);
 
   // Load Pyodide on mount
   useEffect(() => {
@@ -187,6 +202,23 @@ function App() {
 
   // ── Run Code ─────────────────────────────────────────────────────
 
+  const processResult = (result) => {
+    if (result.tree) {
+      setTreeData(result);
+      const allArgs = new Set();
+      const traverse = (n) => {
+        if (n.args) Object.keys(n.args).forEach(k => allArgs.add(k));
+        n.children?.forEach(traverse);
+      };
+      traverse(result.tree);
+      const argNames = Array.from(allArgs);
+      setAvailableArgs(argNames);
+      setSelectedArgs(new Set(argNames));
+    } else {
+      setError('No recursion detected. Did you call the function in main()?');
+    }
+  };
+
   const runCode = async () => {
     if (!pyodide && executionMode === 'local') return;
     setError(null);
@@ -208,10 +240,8 @@ function App() {
         
         if (result.error) {
           setError(result.error);
-        } else if (result.tree) {
-          setTreeData(result);
         } else {
-          setError('No recursion detected. Did you call the function in main()?');
+          processResult(result);
         }
         return;
       } catch (err) {
@@ -247,12 +277,7 @@ function App() {
       pyodide.globals.set('user_code', pythonCode);
       const resultJson = await pyodide.runPythonAsync(PYTHON_TRACER_SCRIPT);
       const result = JSON.parse(resultJson);
-      
-      if (result.tree) {
-        setTreeData(result);
-      } else {
-        setError('No recursion detected. Did you call the function?');
-      }
+      processResult(result);
     } catch (err) {
       console.error(err);
       setError(err.message ? err.message.toString() : String(err));
@@ -288,8 +313,8 @@ function App() {
   // ── Render ────────────────────────────────────────────────────────
 
   return (
-    <div className="app-container">
-      <div className="sidebar">
+    <div className={`app-container ${isCodeEditorVisible ? '' : 'sidebar-hidden'}`}>
+      <div className={`sidebar ${isCodeEditorVisible ? 'visible' : 'hidden'}`}>
         <div className="sidebar-header">
           <h3>Recursion Tree Visualizer</h3>
           {isLoading && <p className="loading-text">Loading Python engine...</p>}
@@ -415,6 +440,10 @@ function App() {
       <div className="main-content">
         <header className="controls">
           <div className="control-panel">
+            <button onClick={() => setIsCodeEditorVisible(!isCodeEditorVisible)} title="Toggle Sidebar">
+              {isCodeEditorVisible ? '⬅ Panel' : '☰ Code'}
+            </button>
+            <div className="divider"></div>
             <button onClick={() => setCurrentStepIndex(c => Math.max(-1, c - 1))} disabled={currentStepIndex <= -1 || isPlaying || !treeData}>Prev</button>
             <button onClick={() => setIsPlaying(!isPlaying)} disabled={!treeData}>
               {isPlaying ? 'Pause' : 'Play'}
@@ -432,9 +461,32 @@ function App() {
             </label>
           </div>
 
-          <div className="step-info">
-            <h3>Activity: <span style={{color: '#007bff'}}>{activeStep ? activeStep.label : 'Waiting to start...'}</span></h3>
-            <p>Step {Math.max(0, currentStepIndex + 1)} of {steps.length}</p>
+          <div className="step-info" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h3>Activity: <span style={{color: '#007bff'}}>{activeStep ? activeStep.label : 'Waiting to start...'}</span></h3>
+              <p>Step {Math.max(0, currentStepIndex + 1)} of {steps.length}</p>
+            </div>
+            
+            {availableArgs.length > 0 && (
+              <div className="args-selector">
+                <span style={{ fontSize: '13px', fontWeight: 'bold', marginRight: '8px' }}>Args:</span>
+                {availableArgs.map(argName => (
+                  <label key={argName} style={{ marginRight: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedArgs.has(argName)} 
+                      onChange={(e) => {
+                        const newSet = new Set(selectedArgs);
+                        if (e.target.checked) newSet.add(argName);
+                        else newSet.delete(argName);
+                        setSelectedArgs(newSet);
+                      }} 
+                    />
+                    {argName}
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
         </header>
 
@@ -442,7 +494,7 @@ function App() {
           {treeData ? (
             <div className="tree-container">
               <ul className="tree">
-                <TreeNode node={treeData.tree} activeNodeId={activeNodeId} returnedNodes={returnedNodes} />
+                <TreeNode node={treeData.tree} activeNodeId={activeNodeId} returnedNodes={returnedNodes} selectedArgs={selectedArgs} />
               </ul>
             </div>
           ) : (
